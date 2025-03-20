@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Monaco + WYSIWYG JSON Editor</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     :root {
       --amoled-black: #000000;
@@ -68,6 +69,13 @@
       align-items: center;
       margin-bottom: 4px;
       cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    
+    .json-property-header:hover {
+      background-color: var(--light-gray);
     }
     
     .json-property-name {
@@ -146,6 +154,7 @@
       align-items: center;
       justify-content: center;
       transition: transform 0.2s;
+      color: var(--text);
     }
     
     .collapsed .collapse-icon {
@@ -157,24 +166,46 @@
       display: none;
     }
     
-    .add-property-btn {
-      font-size: 1.2rem;
-      width: 24px;
-      height: 24px;
+    .action-buttons {
+      display: flex;
+      gap: 4px;
+      margin-left: auto;
+    }
+    
+    .add-property-btn, .add-item-btn {
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-left: 8px;
-      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      background-color: var(--dark-gray);
+      color: var(--accent);
+      border: 1px solid var(--highlight);
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .add-property-btn:hover, .add-item-btn:hover {
+      background-color: var(--medium-gray);
     }
     
     .remove-property-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      background-color: var(--dark-gray);
       color: var(--error);
-      background: none;
-      border: none;
+      border: 1px solid var(--highlight);
       cursor: pointer;
-      padding: 0 4px;
-      margin-left: 8px;
+      transition: background-color 0.2s;
+    }
+    
+    .remove-property-btn:hover {
+      background-color: var(--medium-gray);
     }
     
     .wysiwyg-header {
@@ -184,6 +215,17 @@
       margin-bottom: 16px;
       padding-bottom: 8px;
       border-bottom: 1px solid var(--highlight);
+    }
+    
+    .wysiwyg-header h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .header-actions {
+      display: flex;
+      gap: 8px;
     }
     
     .error-message {
@@ -271,9 +313,10 @@
     
     <div class="wysiwyg-container">
       <div class="wysiwyg-header">
-        <h2>JSON Editor</h2>
-        <div>
-          <button id="format-json" class="primary">Format JSON</button>
+        <h2><i class="fas fa-code-json"></i> JSON Editor</h2>
+        <div class="header-actions">
+          <button id="format-json" class="primary"><i class="fas fa-align-left"></i> Format</button>
+          <button id="save-json" class="primary"><i class="fas fa-save"></i> Save to URL</button>
         </div>
       </div>
       
@@ -281,7 +324,7 @@
       
       <div class="json-controls">
         <button id="apply-changes" style="display: none;">Apply Changes</button>
-        <button id="reset-json">Reset</button>
+        <button id="reset-json"><i class="fas fa-sync-alt"></i> Reset</button>
       </div>
       
       <div id="error-container" class="error-message"></div>
@@ -292,8 +335,8 @@
   <div class="modal" id="add-property-modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Add Property</h3>
-        <button class="close-modal">✕</button>
+        <h3><i class="fas fa-plus-circle"></i> Add Property</h3>
+        <button class="close-modal"><i class="fas fa-times"></i></button>
       </div>
       
       <div class="form-group">
@@ -319,8 +362,8 @@
       </div>
       
       <div class="modal-footer">
-        <button class="close-modal">Cancel</button>
-        <button id="confirm-add-property" class="primary">Add</button>
+        <button class="close-modal"><i class="fas fa-times"></i> Cancel</button>
+        <button id="confirm-add-property" class="primary"><i class="fas fa-plus"></i> Add</button>
       </div>
     </div>
   </div>
@@ -375,6 +418,7 @@
       // WYSIWYG Editor functionality
       const jsonContentElement = document.getElementById('json-content');
       const formatJsonButton = document.getElementById('format-json');
+      const saveJsonButton = document.getElementById('save-json');
       const applyChangesButton = document.getElementById('apply-changes');
       const resetJsonButton = document.getElementById('reset-json');
       const errorContainer = document.getElementById('error-container');
@@ -392,6 +436,20 @@
       
       // Initialize editor
       initializeWysiwygEditor();
+      
+      // Load from URL hash if available
+      if (window.location.hash) {
+        try {
+          const encodedJson = window.location.hash.substring(1);
+          const jsonString = decodeURIComponent(encodedJson);
+          const jsonValue = JSON.parse(jsonString);
+          currentJson = jsonValue;
+          editor.setValue(JSON.stringify(jsonValue, null, 2));
+          renderJson();
+        } catch (e) {
+          errorContainer.textContent = `Error loading from URL: ${e.message}`;
+        }
+      }
       
       editor.onDidChangeModelContent(() => {
         try {
@@ -497,7 +555,7 @@
           if (typeof value === 'object' && value !== null) {
             const collapseIcon = document.createElement('span');
             collapseIcon.className = 'collapse-icon';
-            collapseIcon.textContent = '▼';
+            collapseIcon.innerHTML = '<i class="fas fa-chevron-down"></i>';
             headerElement.insertBefore(collapseIcon, nameElement);
             
             headerElement.addEventListener('click', () => {
@@ -516,18 +574,34 @@
             }
             propertyElement.appendChild(nestedContainer);
             
+            // Add action buttons container
+            const actionButtons = document.createElement('div');
+            actionButtons.className = 'action-buttons';
+            headerElement.appendChild(actionButtons);
+            
             // Add "Add Property" button for objects
             if (!Array.isArray(value)) {
               const addBtn = document.createElement('button');
               addBtn.className = 'add-property-btn';
-              addBtn.textContent = '+';
+              addBtn.innerHTML = '<i class="fas fa-plus"></i>';
               addBtn.title = 'Add Property';
               addBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 openAddPropertyModal(propertyPath, nestedContainer);
               });
-              headerElement.appendChild(addBtn);
+              actionButtons.appendChild(addBtn);
             }
+            
+            // Add remove button
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-property-btn';
+            removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            removeBtn.title = 'Remove Property';
+            removeBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              removeProperty(propertyPath);
+            });
+            actionButtons.appendChild(removeBtn);
           } else {
             const valueContainer = document.createElement('div');
             valueContainer.className = 'json-property-value-container';
@@ -542,18 +616,23 @@
             
             headerElement.appendChild(valueContainer);
             propertyElement.appendChild(headerElement);
+            
+            // Add action buttons container with remove button
+            const actionButtons = document.createElement('div');
+            actionButtons.className = 'action-buttons';
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-property-btn';
+            removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            removeBtn.title = 'Remove Property';
+            removeBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              removeProperty(propertyPath);
+            });
+            
+            actionButtons.appendChild(removeBtn);
+            headerElement.appendChild(actionButtons);
           }
-          
-          // Add remove button
-          const removeBtn = document.createElement('button');
-          removeBtn.className = 'remove-property-btn';
-          removeBtn.textContent = '×';
-          removeBtn.title = 'Remove Property';
-          removeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeProperty(propertyPath);
-          });
-          headerElement.appendChild(removeBtn);
           
           container.appendChild(propertyElement);
         }
@@ -561,10 +640,10 @@
         // Add "Add Property" button for the root object
         if (path.length === 0 && !Array.isArray(obj)) {
           const addBtnContainer = document.createElement('div');
-          addBtnContainer.style.marginTop = '16px';
+          addBtnContainer.style.margin = '16px 0';
           
           const addBtn = document.createElement('button');
-          addBtn.textContent = 'Add Property';
+          addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Property';
           addBtn.addEventListener('click', () => {
             openAddPropertyModal([], container);
           });
@@ -594,7 +673,7 @@
           if (typeof item === 'object' && item !== null) {
             const collapseIcon = document.createElement('span');
             collapseIcon.className = 'collapse-icon';
-            collapseIcon.textContent = '▼';
+            collapseIcon.innerHTML = '<i class="fas fa-chevron-down"></i>';
             headerElement.insertBefore(collapseIcon, nameElement);
             
             headerElement.addEventListener('click', () => {
@@ -628,27 +707,33 @@
             propertyElement.appendChild(headerElement);
           }
           
+          // Add action buttons container
+          const actionButtons = document.createElement('div');
+          actionButtons.className = 'action-buttons';
+          
           // Add remove button
           const removeBtn = document.createElement('button');
           removeBtn.className = 'remove-property-btn';
-          removeBtn.textContent = '×';
+          removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
           removeBtn.title = 'Remove Item';
           removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             removeProperty(itemPath);
           });
-          headerElement.appendChild(removeBtn);
+          
+          actionButtons.appendChild(removeBtn);
+          headerElement.appendChild(actionButtons);
           
           container.appendChild(propertyElement);
         });
         
         // Add "Add Item" button for arrays
         const addBtnContainer = document.createElement('div');
-        addBtnContainer.style.marginTop = '8px';
-        addBtnContainer.style.marginLeft = '16px';
+        addBtnContainer.style.margin = '8px 0 8px 16px';
         
         const addBtn = document.createElement('button');
-        addBtn.textContent = 'Add Item';
+        addBtn.className = 'add-item-btn';
+        addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Item';
         addBtn.addEventListener('click', () => {
           addArrayItem(path);
         });
@@ -921,6 +1006,40 @@
         return JSON.parse(JSON.stringify(currentJson));
       }
     });
+
+    // Add URL hash functionality
+      saveJsonButton.addEventListener('click', () => {
+        try {
+          const jsonValue = getJsonFromWysiwyg();
+          const jsonString = JSON.stringify(jsonValue);
+          const encodedJson = encodeURIComponent(jsonString);
+          window.location.hash = encodedJson;
+          
+          // Show feedback to user
+          const savedMessage = document.createElement('div');
+          savedMessage.style.position = 'fixed';
+          savedMessage.style.top = '20px';
+          savedMessage.style.left = '50%';
+          savedMessage.style.transform = 'translateX(-50%)';
+          savedMessage.style.backgroundColor = 'var(--accent)';
+          savedMessage.style.color = 'var(--amoled-black)';
+          savedMessage.style.padding = '10px 20px';
+          savedMessage.style.borderRadius = '4px';
+          savedMessage.style.zIndex = '9999';
+          savedMessage.innerHTML = '<i class="fas fa-check-circle"></i> JSON saved to URL';
+          document.body.appendChild(savedMessage);
+          
+          setTimeout(() => {
+            savedMessage.style.opacity = '0';
+            savedMessage.style.transition = 'opacity 0.5s';
+            setTimeout(() => {
+              document.body.removeChild(savedMessage);
+            }, 500);
+          }, 2000);
+        } catch (e) {
+          errorContainer.textContent = `Error saving to URL: ${e.message}`;
+        }
+      });
   </script>
 </body>
 </html>
