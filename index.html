@@ -369,6 +369,28 @@
   </div>
   
   <script>
+    // Global variables for elements
+    const jsonContentElement = document.getElementById('json-content');
+    const formatJsonButton = document.getElementById('format-json');
+    const saveJsonButton = document.getElementById('save-json');
+    const applyChangesButton = document.getElementById('apply-changes');
+    const resetJsonButton = document.getElementById('reset-json');
+    const errorContainer = document.getElementById('error-container');
+    const addPropertyModal = document.getElementById('add-property-modal');
+    const closeModalButtons = document.querySelectorAll('.close-modal');
+    const confirmAddPropertyButton = document.getElementById('confirm-add-property');
+    const propertyNameInput = document.getElementById('property-name');
+    const propertyTypeSelect = document.getElementById('property-type');
+    const propertyValueInput = document.getElementById('property-value');
+    const propertyValueContainer = document.getElementById('property-value-container');
+    
+    // Global variables for state
+    let editor = null;
+    let currentJson = null;
+    let currentPath = [];
+    let parentElement = null;
+    let isUpdatingEditor = false;
+    
     // Configure Monaco editor
     require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
     require(['vs/editor/editor.main'], function() {
@@ -402,7 +424,7 @@
       });
       
       // Create Monaco editor
-      const editor = monaco.editor.create(document.getElementById('monaco-editor'), {
+      editor = monaco.editor.create(document.getElementById('monaco-editor'), {
         value: '{\n  "hello": "world",\n  "number": 42,\n  "boolean": true,\n  "nested": {\n    "array": [1, 2, 3],\n    "null": null\n  }\n}',
         language: 'json',
         theme: 'amoled-theme',
@@ -414,25 +436,6 @@
         formatOnPaste: true,
         tabSize: 2
       });
-      
-      // WYSIWYG Editor functionality
-      const jsonContentElement = document.getElementById('json-content');
-      const formatJsonButton = document.getElementById('format-json');
-      const saveJsonButton = document.getElementById('save-json');
-      const applyChangesButton = document.getElementById('apply-changes');
-      const resetJsonButton = document.getElementById('reset-json');
-      const errorContainer = document.getElementById('error-container');
-      const addPropertyModal = document.getElementById('add-property-modal');
-      const closeModalButtons = document.querySelectorAll('.close-modal');
-      const confirmAddPropertyButton = document.getElementById('confirm-add-property');
-      const propertyNameInput = document.getElementById('property-name');
-      const propertyTypeSelect = document.getElementById('property-type');
-      const propertyValueInput = document.getElementById('property-value');
-      const propertyValueContainer = document.getElementById('property-value-container');
-      
-      let currentJson = null;
-      let currentPath = [];
-      let parentElement = null;
       
       // Initialize editor
       initializeWysiwygEditor();
@@ -461,18 +464,7 @@
         }
       });
       
-      formatJsonButton.addEventListener('click', () => {
-        try {
-          const value = editor.getValue();
-          const parsedJson = JSON.parse(value);
-          editor.setValue(JSON.stringify(parsedJson, null, 2));
-        } catch (e) {
-          errorContainer.textContent = `JSON Parse Error: ${e.message}`;
-        }
-      });
-      
       // Set up real-time sync from monaco to WYSIWYG
-      let isUpdatingEditor = false;
       editor.onDidChangeModelContent(() => {
         if (!isUpdatingEditor) {
           try {
@@ -486,560 +478,571 @@
           }
         }
       });
-      
-      applyChangesButton.addEventListener('click', () => {
-        updateMonacoFromWysiwyg();
-      });
-      
-      resetJsonButton.addEventListener('click', () => {
-        initializeWysiwygEditor();
-      });
-      
-      propertyTypeSelect.addEventListener('change', () => {
-        updatePropertyValueInput();
-      });
-      
-      closeModalButtons.forEach(button => {
-        button.addEventListener('click', () => {
-          closeModal();
-        });
-      });
-      
-      confirmAddPropertyButton.addEventListener('click', () => {
-        addNewProperty();
-      });
-      
-      function initializeWysiwygEditor() {
-        try {
-          const jsonText = editor.getValue();
-          currentJson = JSON.parse(jsonText);
-          renderJson();
-          errorContainer.textContent = '';
-        } catch (e) {
-          errorContainer.textContent = `JSON Parse Error: ${e.message}`;
-          jsonContentElement.innerHTML = '<p>Invalid JSON</p>';
-        }
+    });
+    
+    // Event Listeners
+    formatJsonButton.addEventListener('click', () => {
+      try {
+        const value = editor.getValue();
+        const parsedJson = JSON.parse(value);
+        editor.setValue(JSON.stringify(parsedJson, null, 2));
+      } catch (e) {
+        errorContainer.textContent = `JSON Parse Error: ${e.message}`;
       }
-      
-      function renderJson() {
-        jsonContentElement.innerHTML = '';
-        if (typeof currentJson === 'object' && currentJson !== null) {
-          if (Array.isArray(currentJson)) {
-            renderArray(currentJson, jsonContentElement, []);
-          } else {
-            renderObject(currentJson, jsonContentElement, []);
-          }
-        } else {
-          renderPrimitive(currentJson, jsonContentElement, []);
-        }
-      }
-      
-      function renderObject(obj, container, path) {
-        for (const key in obj) {
-          const value = obj[key];
-          const propertyPath = [...path, key];
-          
-          const propertyElement = document.createElement('div');
-          propertyElement.className = 'json-property';
-          propertyElement.dataset.path = propertyPath.join('.');
-          
-          const headerElement = document.createElement('div');
-          headerElement.className = 'json-property-header';
-          
-          const nameElement = document.createElement('span');
-          nameElement.className = 'json-property-name';
-          nameElement.textContent = key;
-          
-          headerElement.appendChild(nameElement);
-          
-          if (typeof value === 'object' && value !== null) {
-            const collapseIcon = document.createElement('span');
-            collapseIcon.className = 'collapse-icon';
-            collapseIcon.innerHTML = '<i class="fas fa-chevron-down"></i>';
-            headerElement.insertBefore(collapseIcon, nameElement);
-            
-            headerElement.addEventListener('click', () => {
-              propertyElement.classList.toggle('collapsed');
-            });
-            
-            propertyElement.appendChild(headerElement);
-            
-            const nestedContainer = document.createElement('div');
-            if (Array.isArray(value)) {
-              nestedContainer.className = 'json-array';
-              renderArray(value, nestedContainer, propertyPath);
-            } else {
-              nestedContainer.className = 'json-object';
-              renderObject(value, nestedContainer, propertyPath);
-            }
-            propertyElement.appendChild(nestedContainer);
-            
-            // Add action buttons container
-            const actionButtons = document.createElement('div');
-            actionButtons.className = 'action-buttons';
-            headerElement.appendChild(actionButtons);
-            
-            // Add "Add Property" button for objects
-            if (!Array.isArray(value)) {
-              const addBtn = document.createElement('button');
-              addBtn.className = 'add-property-btn';
-              addBtn.innerHTML = '<i class="fas fa-plus"></i>';
-              addBtn.title = 'Add Property';
-              addBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                openAddPropertyModal(propertyPath, nestedContainer);
-              });
-              actionButtons.appendChild(addBtn);
-            }
-            
-            // Add remove button
-            const removeBtn = document.createElement('button');
-            removeBtn.className = 'remove-property-btn';
-            removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
-            removeBtn.title = 'Remove Property';
-            removeBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              removeProperty(propertyPath);
-            });
-            actionButtons.appendChild(removeBtn);
-          } else {
-            const valueContainer = document.createElement('div');
-            valueContainer.className = 'json-property-value-container';
-            
-            const typeElement = document.createElement('span');
-            typeElement.className = 'json-property-type';
-            typeElement.textContent = getTypeName(value);
-            valueContainer.appendChild(typeElement);
-            
-            const valueElement = createValueEditor(value, propertyPath);
-            valueContainer.appendChild(valueElement);
-            
-            headerElement.appendChild(valueContainer);
-            propertyElement.appendChild(headerElement);
-            
-            // Add action buttons container with remove button
-            const actionButtons = document.createElement('div');
-            actionButtons.className = 'action-buttons';
-            
-            const removeBtn = document.createElement('button');
-            removeBtn.className = 'remove-property-btn';
-            removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
-            removeBtn.title = 'Remove Property';
-            removeBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              removeProperty(propertyPath);
-            });
-            
-            actionButtons.appendChild(removeBtn);
-            headerElement.appendChild(actionButtons);
-          }
-          
-          container.appendChild(propertyElement);
-        }
+    });
+    
+    saveJsonButton.addEventListener('click', () => {
+      try {
+        const jsonValue = getJsonFromWysiwyg();
+        const jsonString = JSON.stringify(jsonValue);
+        const encodedJson = encodeURIComponent(jsonString);
+        window.location.hash = encodedJson;
         
-        // Add "Add Property" button for the root object
-        if (path.length === 0 && !Array.isArray(obj)) {
-          const addBtnContainer = document.createElement('div');
-          addBtnContainer.style.margin = '16px 0';
+        // Show feedback to user
+        const savedMessage = document.createElement('div');
+        savedMessage.style.position = 'fixed';
+        savedMessage.style.top = '20px';
+        savedMessage.style.left = '50%';
+        savedMessage.style.transform = 'translateX(-50%)';
+        savedMessage.style.backgroundColor = 'var(--accent)';
+        savedMessage.style.color = 'var(--amoled-black)';
+        savedMessage.style.padding = '10px 20px';
+        savedMessage.style.borderRadius = '4px';
+        savedMessage.style.zIndex = '9999';
+        savedMessage.innerHTML = '<i class="fas fa-check-circle"></i> JSON saved to URL';
+        document.body.appendChild(savedMessage);
+        
+        setTimeout(() => {
+          savedMessage.style.opacity = '0';
+          savedMessage.style.transition = 'opacity 0.5s';
+          setTimeout(() => {
+            document.body.removeChild(savedMessage);
+          }, 500);
+        }, 2000);
+      } catch (e) {
+        errorContainer.textContent = `Error saving to URL: ${e.message}`;
+      }
+    });
+    
+    applyChangesButton.addEventListener('click', () => {
+      updateMonacoFromWysiwyg();
+    });
+    
+    resetJsonButton.addEventListener('click', () => {
+      initializeWysiwygEditor();
+    });
+    
+    propertyTypeSelect.addEventListener('change', () => {
+      updatePropertyValueInput();
+    });
+    
+    closeModalButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        closeModal();
+      });
+    });
+    
+    confirmAddPropertyButton.addEventListener('click', () => {
+      addNewProperty();
+    });
+    
+    // Functions
+    function initializeWysiwygEditor() {
+      try {
+        const jsonText = editor.getValue();
+        currentJson = JSON.parse(jsonText);
+        renderJson();
+        errorContainer.textContent = '';
+      } catch (e) {
+        errorContainer.textContent = `JSON Parse Error: ${e.message}`;
+        jsonContentElement.innerHTML = '<p>Invalid JSON</p>';
+      }
+    }
+    
+    function renderJson() {
+      jsonContentElement.innerHTML = '';
+      if (typeof currentJson === 'object' && currentJson !== null) {
+        if (Array.isArray(currentJson)) {
+          renderArray(currentJson, jsonContentElement, []);
+        } else {
+          renderObject(currentJson, jsonContentElement, []);
+        }
+      } else {
+        renderPrimitive(currentJson, jsonContentElement, []);
+      }
+    }
+    
+    function renderObject(obj, container, path) {
+      for (const key in obj) {
+        const value = obj[key];
+        const propertyPath = [...path, key];
+        
+        const propertyElement = document.createElement('div');
+        propertyElement.className = 'json-property';
+        propertyElement.dataset.path = propertyPath.join('.');
+        
+        const headerElement = document.createElement('div');
+        headerElement.className = 'json-property-header';
+        
+        const nameElement = document.createElement('span');
+        nameElement.className = 'json-property-name';
+        nameElement.textContent = key;
+        
+        headerElement.appendChild(nameElement);
+        
+        if (typeof value === 'object' && value !== null) {
+          const collapseIcon = document.createElement('span');
+          collapseIcon.className = 'collapse-icon';
+          collapseIcon.innerHTML = '<i class="fas fa-chevron-down"></i>';
+          headerElement.insertBefore(collapseIcon, nameElement);
           
-          const addBtn = document.createElement('button');
-          addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Property';
-          addBtn.addEventListener('click', () => {
-            openAddPropertyModal([], container);
+          headerElement.addEventListener('click', () => {
+            propertyElement.classList.toggle('collapsed');
           });
           
-          addBtnContainer.appendChild(addBtn);
-          container.appendChild(addBtnContainer);
-        }
-      }
-      
-      function renderArray(arr, container, path) {
-        arr.forEach((item, index) => {
-          const itemPath = [...path, index];
+          propertyElement.appendChild(headerElement);
           
-          const propertyElement = document.createElement('div');
-          propertyElement.className = 'json-property';
-          propertyElement.dataset.path = itemPath.join('.');
-          
-          const headerElement = document.createElement('div');
-          headerElement.className = 'json-property-header';
-          
-          const nameElement = document.createElement('span');
-          nameElement.className = 'json-property-name';
-          nameElement.textContent = `[${index}]`;
-          
-          headerElement.appendChild(nameElement);
-          
-          if (typeof item === 'object' && item !== null) {
-            const collapseIcon = document.createElement('span');
-            collapseIcon.className = 'collapse-icon';
-            collapseIcon.innerHTML = '<i class="fas fa-chevron-down"></i>';
-            headerElement.insertBefore(collapseIcon, nameElement);
-            
-            headerElement.addEventListener('click', () => {
-              propertyElement.classList.toggle('collapsed');
-            });
-            
-            propertyElement.appendChild(headerElement);
-            
-            const nestedContainer = document.createElement('div');
-            if (Array.isArray(item)) {
-              nestedContainer.className = 'json-array';
-              renderArray(item, nestedContainer, itemPath);
-            } else {
-              nestedContainer.className = 'json-object';
-              renderObject(item, nestedContainer, itemPath);
-            }
-            propertyElement.appendChild(nestedContainer);
+          const nestedContainer = document.createElement('div');
+          if (Array.isArray(value)) {
+            nestedContainer.className = 'json-array';
+            renderArray(value, nestedContainer, propertyPath);
           } else {
-            const valueContainer = document.createElement('div');
-            valueContainer.className = 'json-property-value-container';
-            
-            const typeElement = document.createElement('span');
-            typeElement.className = 'json-property-type';
-            typeElement.textContent = getTypeName(item);
-            valueContainer.appendChild(typeElement);
-            
-            const valueElement = createValueEditor(item, itemPath);
-            valueContainer.appendChild(valueElement);
-            
-            headerElement.appendChild(valueContainer);
-            propertyElement.appendChild(headerElement);
+            nestedContainer.className = 'json-object';
+            renderObject(value, nestedContainer, propertyPath);
           }
+          propertyElement.appendChild(nestedContainer);
           
           // Add action buttons container
           const actionButtons = document.createElement('div');
           actionButtons.className = 'action-buttons';
+          headerElement.appendChild(actionButtons);
+          
+          // Add "Add Property" button for objects
+          if (!Array.isArray(value)) {
+            const addBtn = document.createElement('button');
+            addBtn.className = 'add-property-btn';
+            addBtn.innerHTML = '<i class="fas fa-plus"></i>';
+            addBtn.title = 'Add Property';
+            addBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              openAddPropertyModal(propertyPath, nestedContainer);
+            });
+            actionButtons.appendChild(addBtn);
+          }
           
           // Add remove button
           const removeBtn = document.createElement('button');
           removeBtn.className = 'remove-property-btn';
           removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
-          removeBtn.title = 'Remove Item';
+          removeBtn.title = 'Remove Property';
           removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            removeProperty(itemPath);
+            removeProperty(propertyPath);
+          });
+          actionButtons.appendChild(removeBtn);
+        } else {
+          const valueContainer = document.createElement('div');
+          valueContainer.className = 'json-property-value-container';
+          
+          const typeElement = document.createElement('span');
+          typeElement.className = 'json-property-type';
+          typeElement.textContent = getTypeName(value);
+          valueContainer.appendChild(typeElement);
+          
+          const valueElement = createValueEditor(value, propertyPath);
+          valueContainer.appendChild(valueElement);
+          
+          headerElement.appendChild(valueContainer);
+          propertyElement.appendChild(headerElement);
+          
+          // Add action buttons container with remove button
+          const actionButtons = document.createElement('div');
+          actionButtons.className = 'action-buttons';
+          
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'remove-property-btn';
+          removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+          removeBtn.title = 'Remove Property';
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeProperty(propertyPath);
           });
           
           actionButtons.appendChild(removeBtn);
           headerElement.appendChild(actionButtons);
-          
-          container.appendChild(propertyElement);
-        });
+        }
         
-        // Add "Add Item" button for arrays
+        container.appendChild(propertyElement);
+      }
+      
+      // Add "Add Property" button for the root object
+      if (path.length === 0 && !Array.isArray(obj)) {
         const addBtnContainer = document.createElement('div');
-        addBtnContainer.style.margin = '8px 0 8px 16px';
+        addBtnContainer.style.margin = '16px 0';
         
         const addBtn = document.createElement('button');
-        addBtn.className = 'add-item-btn';
-        addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Item';
+        addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Property';
         addBtn.addEventListener('click', () => {
-          addArrayItem(path);
+          openAddPropertyModal([], container);
         });
         
         addBtnContainer.appendChild(addBtn);
         container.appendChild(addBtnContainer);
       }
-      
-      function renderPrimitive(value, container, path) {
-        const valueElement = createValueEditor(value, path);
-        container.appendChild(valueElement);
-      }
-      
-      function createValueEditor(value, path) {
-        const valueElement = document.createElement('div');
-        valueElement.className = 'json-property-value';
-        valueElement.contentEditable = true;
-        valueElement.dataset.path = path.join('.');
-        valueElement.dataset.type = getTypeName(value);
+    }
+    
+    function renderArray(arr, container, path) {
+      arr.forEach((item, index) => {
+        const itemPath = [...path, index];
         
-        if (value === null) {
-          valueElement.textContent = 'null';
-          valueElement.style.fontStyle = 'italic';
-        } else if (typeof value === 'boolean') {
-          valueElement.textContent = value.toString();
-          valueElement.style.fontWeight = 'bold';
-        } else {
-          valueElement.textContent = value.toString();
-        }
+        const propertyElement = document.createElement('div');
+        propertyElement.className = 'json-property';
+        propertyElement.dataset.path = itemPath.join('.');
         
-        valueElement.addEventListener('blur', () => {
-          updateJsonValue(path, valueElement);
-        });
+        const headerElement = document.createElement('div');
+        headerElement.className = 'json-property-header';
         
-        valueElement.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            valueElement.blur();
-          }
-        });
+        const nameElement = document.createElement('span');
+        nameElement.className = 'json-property-name';
+        nameElement.textContent = `[${index}]`;
         
-        return valueElement;
-      }
-      
-      function getTypeName(value) {
-        if (value === null) return 'null';
-        if (Array.isArray(value)) return 'array';
-        return typeof value;
-      }
-      
-      function updateJsonValue(path, element) {
-        const type = element.dataset.type;
-        let value = element.textContent.trim();
+        headerElement.appendChild(nameElement);
         
-        try {
-          switch (type) {
-            case 'number':
-              value = Number(value);
-              if (isNaN(value)) throw new Error('Invalid number');
-              break;
-            case 'boolean':
-              if (value.toLowerCase() === 'true') value = true;
-              else if (value.toLowerCase() === 'false') value = false;
-              else throw new Error('Boolean must be true or false');
-              break;
-            case 'null':
-              if (value.toLowerCase() !== 'null') throw new Error('Must be null');
-              value = null;
-              break;
-          }
+        if (typeof item === 'object' && item !== null) {
+          const collapseIcon = document.createElement('span');
+          collapseIcon.className = 'collapse-icon';
+          collapseIcon.innerHTML = '<i class="fas fa-chevron-down"></i>';
+          headerElement.insertBefore(collapseIcon, nameElement);
           
-          setValueAtPath(currentJson, path, value);
-          errorContainer.textContent = '';
+          headerElement.addEventListener('click', () => {
+            propertyElement.classList.toggle('collapsed');
+          });
           
-          // Update the Monaco editor in real-time
-          updateMonacoFromWysiwyg();
-        } catch (e) {
-          errorContainer.textContent = `Error updating value: ${e.message}`;
-          // Reset the element to the current value
-          element.textContent = getValueAtPath(currentJson, path);
-        }
-      }
-      
-      function updateMonacoFromWysiwyg() {
-        const jsonValue = getJsonFromWysiwyg();
-        try {
-          isUpdatingEditor = true;
-          editor.setValue(JSON.stringify(jsonValue, null, 2));
-          errorContainer.textContent = '';
-          setTimeout(() => {
-            isUpdatingEditor = false;
-          }, 0);
-        } catch (e) {
-          errorContainer.textContent = `Error applying changes: ${e.message}`;
-          isUpdatingEditor = false;
-        }
-      }
-      
-      function setValueAtPath(obj, path, value) {
-        if (path.length === 0) return value;
-        
-        const pathArray = Array.isArray(path) ? path : path.split('.');
-        let current = obj;
-        
-        for (let i = 0; i < pathArray.length - 1; i++) {
-          const key = pathArray[i];
-          if (current[key] === undefined) {
-            current[key] = {};
-          }
-          current = current[key];
-        }
-        
-        current[pathArray[pathArray.length - 1]] = value;
-        return obj;
-      }
-      
-      function getValueAtPath(obj, path) {
-        const pathArray = Array.isArray(path) ? path : path.split('.');
-        let current = obj;
-        
-        for (const key of pathArray) {
-          if (current === undefined || current === null) {
-            return undefined;
-          }
-          current = current[key];
-        }
-        
-        return current;
-      }
-      
-      function removeProperty(path) {
-        const pathArray = Array.isArray(path) ? path : path.split('.');
-        const key = pathArray.pop();
-        let obj = currentJson;
-        
-        for (const segment of pathArray) {
-          obj = obj[segment];
-          if (obj === undefined || obj === null) {
-            return;
-          }
-        }
-        
-        if (Array.isArray(obj)) {
-          obj.splice(Number(key), 1);
-        } else {
-          delete obj[key];
-        }
-        
-        renderJson();
-        
-        // Update Monaco editor in real-time
-        updateMonacoFromWysiwyg();
-      }
-      
-      function openAddPropertyModal(path, container) {
-        currentPath = path;
-        parentElement = container;
-        propertyNameInput.value = '';
-        propertyTypeSelect.value = 'string';
-        propertyValueInput.value = '';
-        updatePropertyValueInput();
-        
-        addPropertyModal.classList.add('visible');
-        propertyNameInput.focus();
-      }
-      
-      function closeModal() {
-        addPropertyModal.classList.remove('visible');
-      }
-      
-      function updatePropertyValueInput() {
-        const type = propertyTypeSelect.value;
-        
-        if (type === 'object' || type === 'array' || type === 'null') {
-          propertyValueContainer.style.display = 'none';
-        } else {
-          propertyValueContainer.style.display = 'block';
+          propertyElement.appendChild(headerElement);
           
-          if (type === 'boolean') {
-            propertyValueInput.type = 'text';
-            propertyValueInput.placeholder = 'true or false';
-          } else if (type === 'number') {
-            propertyValueInput.type = 'number';
-            propertyValueInput.placeholder = 'Enter a number';
+          const nestedContainer = document.createElement('div');
+          if (Array.isArray(item)) {
+            nestedContainer.className = 'json-array';
+            renderArray(item, nestedContainer, itemPath);
           } else {
-            propertyValueInput.type = 'text';
-            propertyValueInput.placeholder = 'Enter a string';
+            nestedContainer.className = 'json-object';
+            renderObject(item, nestedContainer, itemPath);
           }
+          propertyElement.appendChild(nestedContainer);
+        } else {
+          const valueContainer = document.createElement('div');
+          valueContainer.className = 'json-property-value-container';
+          
+          const typeElement = document.createElement('span');
+          typeElement.className = 'json-property-type';
+          typeElement.textContent = getTypeName(item);
+          valueContainer.appendChild(typeElement);
+          
+          const valueElement = createValueEditor(item, itemPath);
+          valueContainer.appendChild(valueElement);
+          
+          headerElement.appendChild(valueContainer);
+          propertyElement.appendChild(headerElement);
         }
+        
+        // Add action buttons container
+        const actionButtons = document.createElement('div');
+        actionButtons.className = 'action-buttons';
+        
+        // Add remove button
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-property-btn';
+        removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+        removeBtn.title = 'Remove Item';
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeProperty(itemPath);
+        });
+        
+        actionButtons.appendChild(removeBtn);
+        headerElement.appendChild(actionButtons);
+        
+        container.appendChild(propertyElement);
+      });
+      
+      // Add "Add Item" button for arrays
+      const addBtnContainer = document.createElement('div');
+      addBtnContainer.style.margin = '8px 0 8px 16px';
+      
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-item-btn';
+      addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Item';
+      addBtn.addEventListener('click', () => {
+        addArrayItem(path);
+      });
+      
+      addBtnContainer.appendChild(addBtn);
+      container.appendChild(addBtnContainer);
+    }
+    
+    function renderPrimitive(value, container, path) {
+      const valueElement = createValueEditor(value, path);
+      container.appendChild(valueElement);
+    }
+    
+    function createValueEditor(value, path) {
+      const valueElement = document.createElement('div');
+      valueElement.className = 'json-property-value';
+      valueElement.contentEditable = true;
+      valueElement.dataset.path = path.join('.');
+      valueElement.dataset.type = getTypeName(value);
+      
+      if (value === null) {
+        valueElement.textContent = 'null';
+        valueElement.style.fontStyle = 'italic';
+      } else if (typeof value === 'boolean') {
+        valueElement.textContent = value.toString();
+        valueElement.style.fontWeight = 'bold';
+      } else {
+        valueElement.textContent = value.toString();
       }
       
-      function addNewProperty() {
-        const name = propertyNameInput.value.trim();
-        const type = propertyTypeSelect.value;
-        
-        if (!name) {
-          alert('Property name is required');
-          return;
+      valueElement.addEventListener('blur', () => {
+        updateJsonValue(path, valueElement);
+      });
+      
+      valueElement.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          valueElement.blur();
         }
-        
-        let value;
-        
+      });
+      
+      return valueElement;
+    }
+    
+    function getTypeName(value) {
+      if (value === null) return 'null';
+      if (Array.isArray(value)) return 'array';
+      return typeof value;
+    }
+    
+    function updateJsonValue(path, element) {
+      const type = element.dataset.type;
+      let value = element.textContent.trim();
+      
+      try {
         switch (type) {
-          case 'string':
-            value = propertyValueInput.value;
-            break;
           case 'number':
-            value = Number(propertyValueInput.value);
-            if (isNaN(value)) {
-              alert('Invalid number');
-              return;
-            }
+            value = Number(value);
+            if (isNaN(value)) throw new Error('Invalid number');
             break;
           case 'boolean':
-            const boolValue = propertyValueInput.value.toLowerCase();
-            if (boolValue === 'true') value = true;
-            else if (boolValue === 'false') value = false;
-            else {
-              alert('Boolean must be true or false');
-              return;
-            }
-            break;
-          case 'object':
-            value = {};
-            break;
-          case 'array':
-            value = [];
+            if (value.toLowerCase() === 'true') value = true;
+            else if (value.toLowerCase() === 'false') value = false;
+            else throw new Error('Boolean must be true or false');
             break;
           case 'null':
+            if (value.toLowerCase() !== 'null') throw new Error('Must be null');
             value = null;
             break;
         }
         
-        let target = currentJson;
+        setValueAtPath(currentJson, path, value);
+        errorContainer.textContent = '';
         
-        for (const segment of currentPath) {
-          target = target[segment];
+        // Update the Monaco editor in real-time
+        updateMonacoFromWysiwyg();
+      } catch (e) {
+        errorContainer.textContent = `Error updating value: ${e.message}`;
+        // Reset the element to the current value
+        element.textContent = getValueAtPath(currentJson, path);
+      }
+    }
+    
+    function updateMonacoFromWysiwyg() {
+      const jsonValue = getJsonFromWysiwyg();
+      try {
+        isUpdatingEditor = true;
+        editor.setValue(JSON.stringify(jsonValue, null, 2));
+        errorContainer.textContent = '';
+        setTimeout(() => {
+          isUpdatingEditor = false;
+        }, 0);
+      } catch (e) {
+        errorContainer.textContent = `Error applying changes: ${e.message}`;
+        isUpdatingEditor = false;
+      }
+    }
+    
+    function setValueAtPath(obj, path, value) {
+      if (path.length === 0) return value;
+      
+      const pathArray = Array.isArray(path) ? path : path.split('.');
+      let current = obj;
+      
+      for (let i = 0; i < pathArray.length - 1; i++) {
+        const key = pathArray[i];
+        if (current[key] === undefined) {
+          current[key] = {};
         }
+        current = current[key];
+      }
+      
+      current[pathArray[pathArray.length - 1]] = value;
+      return obj;
+    }
+    
+    function getValueAtPath(obj, path) {
+      const pathArray = Array.isArray(path) ? path : path.split('.');
+      let current = obj;
+      
+      for (const key of pathArray) {
+        if (current === undefined || current === null) {
+          return undefined;
+        }
+        current = current[key];
+      }
+      
+      return current;
+    }
+    
+    function removeProperty(path) {
+      const pathArray = Array.isArray(path) ? path : path.split('.');
+      const key = pathArray.pop();
+      let obj = currentJson;
+      
+      for (const segment of pathArray) {
+        obj = obj[segment];
+        if (obj === undefined || obj === null) {
+          return;
+        }
+      }
+      
+      if (Array.isArray(obj)) {
+        obj.splice(Number(key), 1);
+      } else {
+        delete obj[key];
+      }
+      
+      renderJson();
+      
+      // Update Monaco editor in real-time
+      updateMonacoFromWysiwyg();
+    }
+    
+    function openAddPropertyModal(path, container) {
+      currentPath = path;
+      parentElement = container;
+      propertyNameInput.value = '';
+      propertyTypeSelect.value = 'string';
+      propertyValueInput.value = '';
+      updatePropertyValueInput();
+      
+      addPropertyModal.classList.add('visible');
+      propertyNameInput.focus();
+    }
+    
+    function closeModal() {
+      addPropertyModal.classList.remove('visible');
+    }
+    
+    function updatePropertyValueInput() {
+      const type = propertyTypeSelect.value;
+      
+      if (type === 'object' || type === 'array' || type === 'null') {
+        propertyValueContainer.style.display = 'none';
+      } else {
+        propertyValueContainer.style.display = 'block';
         
-        if (Array.isArray(target)) {
-          target.push(value);
+        if (type === 'boolean') {
+          propertyValueInput.type = 'text';
+          propertyValueInput.placeholder = 'true or false';
+        } else if (type === 'number') {
+          propertyValueInput.type = 'number';
+          propertyValueInput.placeholder = 'Enter a number';
         } else {
-          target[name] = value;
+          propertyValueInput.type = 'text';
+          propertyValueInput.placeholder = 'Enter a string';
         }
-        
-        closeModal();
+      }
+    }
+    
+    function addNewProperty() {
+      const name = propertyNameInput.value.trim();
+      const type = propertyTypeSelect.value;
+      
+      if (!name) {
+        alert('Property name is required');
+        return;
+      }
+      
+      let value;
+      
+      switch (type) {
+        case 'string':
+          value = propertyValueInput.value;
+          break;
+        case 'number':
+          value = Number(propertyValueInput.value);
+          if (isNaN(value)) {
+            alert('Invalid number');
+            return;
+          }
+          break;
+        case 'boolean':
+          const boolValue = propertyValueInput.value.toLowerCase();
+          if (boolValue === 'true') value = true;
+          else if (boolValue === 'false') value = false;
+          else {
+            alert('Boolean must be true or false');
+            return;
+          }
+          break;
+        case 'object':
+          value = {};
+          break;
+        case 'array':
+          value = [];
+          break;
+        case 'null':
+          value = null;
+          break;
+      }
+      
+      let target = currentJson;
+      
+      for (const segment of currentPath) {
+        target = target[segment];
+      }
+      
+      if (Array.isArray(target)) {
+        target.push(value);
+      } else {
+        target[name] = value;
+      }
+      
+      closeModal();
+      renderJson();
+      
+      // Update Monaco editor in real-time
+      updateMonacoFromWysiwyg();
+    }
+    
+    function addArrayItem(path) {
+      let array = currentJson;
+      
+      for (const segment of path) {
+        array = array[segment];
+      }
+      
+      if (Array.isArray(array)) {
+        array.push('');
         renderJson();
         
         // Update Monaco editor in real-time
         updateMonacoFromWysiwyg();
       }
-      
-      function addArrayItem(path) {
-        let array = currentJson;
-        
-        for (const segment of path) {
-          array = array[segment];
-        }
-        
-        if (Array.isArray(array)) {
-          array.push('');
-          renderJson();
-          
-          // Update Monaco editor in real-time
-          updateMonacoFromWysiwyg();
-        }
-      }
-      
-      function getJsonFromWysiwyg() {
-        return JSON.parse(JSON.stringify(currentJson));
-      }
-    });
-
-    // Add URL hash functionality
-      saveJsonButton.addEventListener('click', () => {
-        try {
-          const jsonValue = getJsonFromWysiwyg();
-          const jsonString = JSON.stringify(jsonValue);
-          const encodedJson = encodeURIComponent(jsonString);
-          window.location.hash = encodedJson;
-          
-          // Show feedback to user
-          const savedMessage = document.createElement('div');
-          savedMessage.style.position = 'fixed';
-          savedMessage.style.top = '20px';
-          savedMessage.style.left = '50%';
-          savedMessage.style.transform = 'translateX(-50%)';
-          savedMessage.style.backgroundColor = 'var(--accent)';
-          savedMessage.style.color = 'var(--amoled-black)';
-          savedMessage.style.padding = '10px 20px';
-          savedMessage.style.borderRadius = '4px';
-          savedMessage.style.zIndex = '9999';
-          savedMessage.innerHTML = '<i class="fas fa-check-circle"></i> JSON saved to URL';
-          document.body.appendChild(savedMessage);
-          
-          setTimeout(() => {
-            savedMessage.style.opacity = '0';
-            savedMessage.style.transition = 'opacity 0.5s';
-            setTimeout(() => {
-              document.body.removeChild(savedMessage);
-            }, 500);
-          }, 2000);
-        } catch (e) {
-          errorContainer.textContent = `Error saving to URL: ${e.message}`;
-        }
-      });
+    }
+    
+    function getJsonFromWysiwyg() {
+      return JSON.parse(JSON.stringify(currentJson));
+    }
   </script>
 </body>
 </html>
